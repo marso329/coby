@@ -244,7 +244,7 @@ class BuildDirectory:
         dirtyTargetsVisited=[]
         while dirtyTargets:
             if dirtyTargets[0] in dirtyTargetsVisited:
-                dirtyTargets.remove(element)
+                dirtyTargets.remove(dirtyTargets[0])
                 continue
             self.targets[dirtyTargets[0]].dirty=True
             #find targets that depends on this target
@@ -676,17 +676,20 @@ def loadRuleFile(buildDir : BuildDirectory,currentPath:str) :
                 element[1](buildDir.variables)
 
 
-
-parser = argparse.ArgumentParser(prog='coby')
-parser.add_argument('-file',"-f")
-arguments = parser.parse_args()
-fileName="Build"
-if arguments.file:
-    fileName=arguments.file
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(prog='coby')
+    parser.add_argument('-file',"-f")
+    arguments = parser.parse_args()
+    fileName="Build"
+    if arguments.file:
+        fileName=arguments.file
     buildDir=BuildDirectory()
     buildDir.path=os.getcwd()
     loadRuleFile(buildDir,os.getcwd())
     loadTargetFile(buildDir,fileName)
     #print(buildDir)
     buildDir.build()
+
+if __name__ == "__main__":
+    main()
+
