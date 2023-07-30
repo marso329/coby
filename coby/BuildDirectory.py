@@ -1,59 +1,22 @@
-#!/bin/python3
-#start = := creation | assignment
-
-#creation := creates "=" rule(args)
-
-#creates := items
-
-#items := name | enumerated
-
-#rule := name
-
-#name := string
-
-#args is optional
-#args :=   name=items{","name=items} 
-
-#enumerated := [name {, name}]
-
-#terminals= "=","(",")",string,"[","]"
-
 import re
-import argparse
 import os
 import importlib.util
 import sys
 import subprocess
 from pathlib import Path
 
+import coby 
+from coby import FileCompilationTimesCache
+from coby import TargetFile
 
-class FileCompilationTimesCache:
-    def __init__(self):
-        self.times={}
-        if os.path.isfile("./compilationCache"):
-            with open("./compilationCache") as fobj:
-                for line in fobj:
-                    row = line.split()
-                    self.times[row[0]]=float(row[1])
-    
-    
-    def write(self):
-        with open("./compilationCache", 'w+') as fobj:
-            for fileName in self.times:
-                fobj.write('{} {}\n'.format(fileName,self.times[fileName]))
-    
-    def getCompilationTime(self,fileName):
-        if fileName in self.times:
-            return self.times[fileName]
-        return 0.0
-    def setCompilationTime(self,fileName,time):
-        self.times[fileName]=time
 class Target:
     def __init__(self,buildDir):
         self.rule=""
         self.target=""
         self.deps=[]
         self.input=""
+        self.BMI=""
+        self.objectFile=""
         self.buildDir=buildDir
         self.output=[]
         self.commands=[]
@@ -82,6 +45,10 @@ class Target:
             return self.buildDir.getOutputDir()
         if key=="output":
             return self.output
+        if key=="BMI":
+            return self.BMI
+        if key=="objectFile":
+            return self.objectFile
         if key=="path":
             return self.buildDir.path
         
@@ -89,6 +56,17 @@ class Target:
     def __setitem__(self, key, value):
         if key=="output":
             self.output.append(value)
+        elif key=="input":
+            self.input=value
+        elif key=="BMI":
+            if self.BMI:
+                raise RuntimeError("BMI is only allowed to be set once")
+            self.BMI=value
+        elif key=="objectFile":
+            if self.objectFile:
+                raise RuntimeError("BMI is only allowed to be set once")
+            self.objectFile=value
+        
         else:
             raise RuntimeError("key {} undefined".format(key))
 
@@ -103,17 +81,28 @@ class Target:
             return True
         return False
 
+
+
 class BuildDirectory:
-    def __init__(self):
+    def __init__(self,ruleFile,targetFile):
         self.targets={}
         self.rules={}
         self.subdirs=[]
         self.variables={}
         self.default_target=""
-        self.path=""
+        self.path=os.getcwd()
         self.in_source_build=False
-        self.build_directory=""
-        self.compilationCache=FileCompilationTimesCache()
+        self.build_directory=self.path+os.sep+"build"
+        self.compilationCache=FileCompilationTimesCache.FileCompilationTimesCache()
+        self.ruleFile=ruleFile
+        self.targetFile=targetFile
+        
+        self.checkRuleFile()
+        if self.ruleFile:
+            self.loadRuleFile()
+        self.checkTargetFile()
+        if self.targetFile:
+            self.loadTargetFile()
     def __str__(self):
 
         returnString=""
@@ -133,6 +122,53 @@ class BuildDirectory:
         returnString+="in_source_build :"+str(self.in_source_build)+"\n" 
         returnString+="path :"+self.path
         return returnString
+
+    def checkRuleFile(self):
+        if self.ruleFile:
+            self.ruleFile=self.path+os.sep+self.ruleFile
+            if not os.path.isfile(self.ruleFile):
+                raise RuntimeError("specified rule file {} does not exist".format(self.ruleFile))
+        #if it is not specified then it is ok that it does not exists and it will not be loaded
+        self.ruleFile="BuildConfig.py"
+        self.ruleFile=self.path+os.sep+self.ruleFile
+        if not os.path.isfile(self.ruleFile):
+            self.ruleFile=None
+    
+    def checkTargetFile(self):
+        if self.targetFile:
+            self.targetFile=self.path+os.sep+self.targetFile
+            if not os.path.isfile(self.targetFile):
+                raise RuntimeError("specified target file {} does not exist".format(self.targetFile))
+        #if it is not specified then it is ok that it does not exists and it will not be loaded
+        self.targetFile="Build"
+        self.targetFile=self.path+os.sep+self.targetFile
+        if not os.path.isfile(self.targetFile):
+            self.targetFile=None
+        
+
+
+
+    def loadTargetFile(self):
+        self.targetFileInstance=TargetFile.TargetFile(self,self.targetFile)
+
+    def pathToModuleName(self,path):
+        return path.replace(os.sep,".")
+
+
+    def loadRuleFile(self) :
+        moduleName=self.pathToModuleName(self.ruleFile)
+        spec = importlib.util.spec_from_file_location(moduleName, self.ruleFile)
+        foo = importlib.util.module_from_spec(spec)
+        sys.modules[moduleName] = foo
+        spec.loader.exec_module(foo)
+        from inspect import getmembers, isfunction
+        functions=getmembers(foo, isfunction)
+        for element in functions:
+            if element[0]!="init":
+                self.rules[element[0]]=element[1]
+            else:
+                element[1](self.variables)
+
 
     def saveCache(self):
         self.compilationCache.write()
@@ -181,6 +217,9 @@ class BuildDirectory:
         if not self.default_target:
             #all targets
             requiredTargets=self.getRequiredTargets()
+            if not requiredTargets:
+                print("No targets to build in {}".format(self.path))
+                return
             buildOrder=self.decideBuildOrder(requiredTargets)
             if len(buildOrder)==0:
                 raise RuntimeError("no build order could be decided")
@@ -198,8 +237,14 @@ class BuildDirectory:
         #step three, find the order in which to build it
         buildOrder=self.decideBuildOrder(requiredTargets)
 
+        #we need to build the commands in the reverse order
+        buildOrder.reverse()
+
         #step four, build the commands for the targets
         self.buildCommands(buildOrder)
+
+        #revert the reverse
+        buildOrder.reverse()
 
         #step five, check for dirty targets
         self.checkForDirtyFiles(requiredTargets)
@@ -297,8 +342,18 @@ class BuildDirectory:
     def run_commands(self,commands):
         children=[]
         for command in commands:
-            print(" ".join(command))
-            children.append( subprocess.Popen(command, stdout=subprocess.PIPE))
+            #special case when we do piping
+            if type(command[0])==tuple:
+                print(" ".join(command[0][1]))
+                output=subprocess.PIPE
+                if len(command)>1 and command[1][0]=="file":
+                    output=open(command[1][1],"a")
+                children.append( subprocess.Popen(command[0][1], stdout=output))
+                for element in command[1:]:
+                    children.append( subprocess.Popen(command[0][1], stdout=subprocess.PIPE,stdin=children[-1].stdout))
+            else:    
+                print(" ".join(command))
+                children.append( subprocess.Popen(command, stdout=subprocess.PIPE))
         for child in children:
             streamdata = child.communicate()[0]
             rc = child.returncode
@@ -327,7 +382,7 @@ class BuildDirectory:
         raise RuntimeError("rule {} not found".format(name))
     
     #return all targets required to build targetName, if no name is specified then it just return all targets
-    def getRequiredTargets(self,targetName):
+    def getRequiredTargets(self,targetName=""):
         if not targetName:
             depTargets={}
             for element in self.targets:
@@ -413,283 +468,3 @@ class BuildDirectory:
             raise Exception("Circular dependency found.")
 
         return final_order
-
-def at(line):
-    #print("at-> ",line)
-    if not line:
-        return False,"",line
-    if line[0]=="@":
-        val=line[0]
-        line=line[1:]
-        #print("success")
-        return True,val,line
-    return False,"",line
-
-def right_parenthesis(line):
-    #print("right_parenthesis-> ",line)
-    if not line:
-        return False,"",line
-    if line[0]==")":
-        val=line[0]
-        line=line[1:]
-        #print("success")
-        return True,val,line
-    return False,"",line
-
-
-def left_parenthesis(line):
-    #print("left_parenthesis-> ",line)
-    if not line:
-        return False,"",line
-    if line[0]=="(":
-        val=line[0]
-        line=line[1:]
-        #print("success")
-        return True,val,line
-    return False,"",line
-
-def comma(line):
-    #print("comma-> ",line)
-    if not line:
-        return False,"",line
-    if line[0]==",":
-        val=line[0]
-        line=line[1:]
-        return True,val,line
-    return False,"",line
-
-def left_square_bracket(line):
-    #print("left_square-> ",line)
-    if not line:
-        return False,"",line
-    if line[0]=="[":
-        val=line[0]
-        line=line[1:]
-        #print("success")
-        return True,val,line
-    return False,"",line
-
-def right_square_bracket(line):
-    #print("right_square-> ",line)
-    if not line:
-        return False,"",line
-    if line[0]=="]":
-        val=line[0]
-        line=line[1:]
-        return True,val,line
-    return False,"",line
-
-def equal(line):
-    #print("equal-> ",line)
-    if not line:
-        return False,"",line
-    if line[0]=="=":
-        val=line[0]
-        line=line[1:]
-        return True,val,line
-    return False,"",line
-
-
-def args(line):
-    #print("args-> ",line)
-    success,arg_name,new_line=name(line)
-    if not success:
-        return True,{},line
-    success,val,new_line=equal(new_line)
-    if not success:
-        return True,{},line 
-    success,arg_val,new_line=items(new_line)
-    if not success:
-        return True,{},line 
-    result={}
-    result[arg_name]=arg_val
-    #start repetition
-    while True:
-        success,val,new_line_second=comma(new_line)
-        if not success:
-            break
-        success,arg_name,new_line_second=name(new_line_second)
-        if not success:
-            break
-        success,val,new_line_second=equal(new_line_second)
-        if not success:
-            break
-        success,arg_val,new_line_second=items(new_line_second)
-        if not success:
-            break
-        new_line=new_line_second
-        result[arg_name]=arg_val
-    return True, result,new_line
-
-def enumerated(line):
-    #print("args-> ",line)
-    success,val,new_line=left_square_bracket(line)
-    if not success:
-        return False,"",line
-    success,val,new_line=name(new_line)
-    if not success:
-        return False,"",line 
-    result=[]
-    result.append(val)
-    #start repetition
-    while True:
-        success,val,new_line_second=comma(new_line)
-        if not success:
-            break
-        success,val,new_line_second=name(new_line_second)
-        if not success:
-            break
-        new_line=new_line_second
-        result.append(val)
-    success,val,new_line=right_square_bracket(new_line)
-    if not success:
-        return False,"",line
-    return True, result,new_line    
-
-def name(line):
-    if not line:
-        return False,"",line
-    _rex = re.compile("[/0-9a-zA-Z._-]+$")
-    if _rex.match(line[0]):
-        val=line[0]
-        val=val.replace("\n","")
-        line=line[1:]
-        return True,val,line
-    return False,"",line
-
-def items(line):
-    #print("item-> ",line)
-    success,val,new_line=name(line)
-    if not success:
-        success,val,new_line=enumerated(line)
-        if not success:
-            return False,"",line
-    return success,val,new_line
-
-
-def creates(line):
-    #print("creates-> ",line)
-    success,val,new_line=items(line)
-    if not success:
-        return False,"",line
-    return success,val,new_line
-
-def creation(buildDir : BuildDirectory,line):
-    #print("creation-> ",line)
-    success,valCreates,new_line=creates(line)
-    if not success:
-        return False,"",line
-    success,val,new_line=equal(new_line)
-    if not success:
-        return False,"",line
-    success,valName,new_line=name(new_line)
-    if not success:
-        return False,"",line
-    success,val,new_line=left_parenthesis(new_line)
-    if not success:
-        return False,"",line
-    success,valArgs,new_line=args(new_line)
-    if not success:
-        return False,"",line
-    success,val,new_line=right_parenthesis(new_line)
-    if not success:
-        return False,"",line
-    targets=[]
-    if type(valCreates)==str:
-        targets.append(valCreates)
-    elif type(valCreates)==list:
-        targets=valCreates
-    else:
-        raise RuntimeError("undefined type")
-    for element in targets:
-        if element in buildDir.targets:
-            raise RuntimeError("duplicate target name {}".format(element))
-        target=Target(buildDir)
-        target.rule=valName
-        target.target=element
-        #target.variables=valArgs.copy()
-        for arg in valArgs:
-            if not target.checkSpecialVariables(arg,valArgs[arg]):
-                raise RuntimeError("invalid argument {} for target".format(arg))
-        buildDir.targets[element]=target
-    return True,"",new_line
-
-def assignment(buildDir : BuildDirectory,line):
-    success,val,new_line=at(line)
-    if not success:
-        return False,"",line 
-    success,valName,new_line=name(new_line)
-    if not success:
-        return False,"",line
-    success,val,new_line=equal(new_line)
-    if not success:
-        return False,"",line
-    success,valItems,new_line=items(new_line)
-    if not success:
-        return False,"",line
-    if not buildDir.checkSpecialVariables(valName,valItems):
-        raise RuntimeError("Undefined variable {} in target file".format(valName))
-    return True,"",new_line
-
-def start(buildDir : BuildDirectory,line):
-    success,val,new_line= creation(buildDir,line)
-    if success:
-        return success,val,new_line
-    return assignment(buildDir,line)
-
-def match(buildDir : BuildDirectory,line):
-    success,val,new_line= start(buildDir,line)
-    #print(new_line)
-    assert success
-    assert len(new_line)==0
-
-
-
-def loadTargetFile(buildDir : BuildDirectory,fileName:str):
-    with open(fileName) as f:
-        for line in f:
-            if line[0]!="\n" and line[0]!="#":
-                #print(line,end="")
-                split_line=re.split('([,|(|)|=|\]|\[|@])', line)
-                clean_line = [i for i in split_line if i and i!="\n"]
-                match(buildDir,clean_line)
-
-def pathToModuleName(path):
-    return path.replace(os.sep,".")
-
-
-def loadRuleFile(buildDir : BuildDirectory,currentPath:str) :
-    fileName="BuildConfig.py"
-    fullPath=currentPath+os.sep+fileName
-    moduleName=pathToModuleName(fullPath)
-    if os.path.isfile(fileName):
-        spec = importlib.util.spec_from_file_location(moduleName, fileName)
-        foo = importlib.util.module_from_spec(spec)
-        sys.modules[moduleName] = foo
-        spec.loader.exec_module(foo)
-        from inspect import getmembers, isfunction
-        functions=getmembers(foo, isfunction)
-        for element in functions:
-            if element[0]!="init":
-                buildDir.rules[element[0]]=element[1]
-            else:
-                element[1](buildDir.variables)
-
-
-def main():
-    parser = argparse.ArgumentParser(prog='coby')
-    parser.add_argument('-file',"-f")
-    arguments = parser.parse_args()
-    fileName="Build"
-    if arguments.file:
-        fileName=arguments.file
-    buildDir=BuildDirectory()
-    buildDir.path=os.getcwd()
-    loadRuleFile(buildDir,os.getcwd())
-    loadTargetFile(buildDir,fileName)
-    #print(buildDir)
-    buildDir.build()
-
-if __name__ == "__main__":
-    main()
-

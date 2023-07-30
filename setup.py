@@ -7,5 +7,5 @@ setup(
     author="Martin Soderen",
     packages=find_packages(),
     include_package_data=True,
-    entry_points = {'console_scripts': ['coby=coby.coby:main'],}
+    entry_points = {'console_scripts': ['coby=coby.__main__:main'],}
 )
