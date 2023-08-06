@@ -48,9 +48,12 @@ def scan(file):
                 modules=result.group(1)
                 modules=getNameImport(modules)
                 imports.append(modules)
-    print("imports:")
-    print(imports)
-    print("exports:")
-    print(exports)
+    if len(exports)>1:
+        raise RuntimeError("file {} contains more than one module exports, this is currently not supported".format(file))
+    #to internally transfer "export module A; import module :C ->import module A:C"
+    for element in imports:
+        if element[0]=="":
+            element[0]=exports[0][0];
+    return {"imports":imports,"exports":exports}
     
             

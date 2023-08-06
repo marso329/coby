@@ -8,6 +8,7 @@ from pathlib import Path
 import coby 
 from coby import FileCompilationTimesCache
 from coby import TargetFile
+from coby import scanner
 
 class Target:
     def __init__(self,buildDir):
@@ -22,9 +23,12 @@ class Target:
         self.commands=[]
         self.lastChangeTime=0
         self.dirty=False
+        self.automatic=False
+        self.imports=[]
+        self.exports=[]
     def __str__(self):
         returnString="("
-        returnString+="rule: "+self.rule+", target: "+self.target+", deps: "+str(self.deps) +", input: "+self.input+", output: "+self.output
+        returnString+="rule: "+self.rule+", target: "+self.target+", deps: "+str(self.deps) +", input: "+self.input+", output: "+str(self.output)
         returnString+=")"
         return returnString
     def __getitem__(self, key):
@@ -78,6 +82,9 @@ class Target:
             return True
         if variable.lower()=="deps":
             self.deps=val
+            return True
+        if variable.lower()=="automatic":
+            self.automatic=val=="true"
             return True
         return False
 
@@ -150,6 +157,71 @@ class BuildDirectory:
 
     def loadTargetFile(self):
         self.targetFileInstance=TargetFile.TargetFile(self,self.targetFile)
+        self.automaticScanning()
+
+    def automaticScanning(self):
+        #need to scan all targets first
+        for element in self.targets.values():
+            if element.automatic:
+                if not element.input:
+                    raise RuntimeError("target {} is set to automatic but has no input file".format(element.target))
+                self.automaticScanningTarget(element)
+        #build the dependency tree
+        for element in self.targets.copy().values():
+            if element.automatic:
+                self.buildAutomaticDependency(element)
+        print(self)
+
+    def automaticScanningTarget(self,target):
+        fileToScan=target.input
+        importExports=scanner.scan(fileToScan)
+        target.imports=importExports["imports"]
+        target.exports=importExports["exports"]
+        if target.exports:
+            if len(target.exports)!=1:
+                raise RuntimeError("target {} has more than one export , this is nor supported".format(target.target))
+            #if target.exports[0]!=target.rule:
+            #    raise RuntimeError("target {} exports {} , these names must be the same".format(target.target,target.exports[0]))
+    
+    def checkIfSystemHeader(self,importVal):
+        if len(importVal)==1:
+            if importVal[0][0]=="<" and importVal[0][-1]==">":
+                return True 
+        return False
+    
+    def addSystemHeaderTarget(self,importVal):
+        name=importVal[0][1:-1]
+        if name in self.targets:
+            return name
+        target=Target(self)
+        target.target=name
+        target.rule="stdlib"
+        self.targets[name]=target
+        return name
+
+
+    def buildAutomaticDependency(self,target):
+        for element in target.imports:
+            if self.checkIfSystemHeader(element):
+                print(" {} is a system header ".format(element))
+                systemHeaderTarget= self.addSystemHeaderTarget(element)
+                target.deps.append(systemHeaderTarget)
+                continue
+            dependencyTarget=self.findTargetFromExport(element)
+            if dependencyTarget:
+                if dependencyTarget==target:
+                    raise RuntimeError("target {} depends on it self".format(target.target))
+                target.deps.append(dependencyTarget.target)
+                print("found target {} that provides {}".format(dependencyTarget.target,element))
+
+
+    def findTargetFromExport(self,export):
+        for element in self.targets.values():
+            if element.exports:
+                if export ==element.exports[0]:
+                    return element
+
+
 
     def pathToModuleName(self,path):
         return path.replace(os.sep,".")
