@@ -43,7 +43,7 @@ def printFileImportExportsFunction(arguments):
     print("printfile")
     if not arguments.file:
         raise RuntimeError("printFileImportExports requires a file")
-    scanner.scan(arguments.file)
+    print(scanner.scan(arguments.file))
 def main():
     parser = argparse.ArgumentParser(prog='coby')
     #parser.add_argument('toDo',nargs='?',default="build",type=str)

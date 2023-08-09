@@ -1,0 +1,1 @@
+C=user_module(input=C.cxx,automatic=true)

@@ -38,7 +38,7 @@ class Target:
                 realTarget.append(self.buildDir.findTarget(element))
             return realTarget
         if key=="input":
-            return self.input
+            return self.buildDir.path+os.sep+self.input
         if key=="rule":
             return self.rule
         if key=="target":
@@ -56,7 +56,10 @@ class Target:
         if key=="path":
             return self.buildDir.path
         
-        return self.buildDir.searchFromTarget(key)
+        val= self.buildDir.searchFromTarget(key)
+        if val:
+            return val
+        raise KeyError("key {} not found in directory {}".format(key,self.buildDir.path))
     def __setitem__(self, key, value):
         if key=="output":
             self.output.append(value)
@@ -91,25 +94,42 @@ class Target:
 
 
 class BuildDirectory:
-    def __init__(self,ruleFile,targetFile):
+    def __init__(self,ruleFile,targetFile,kid=None,parent=None,path=""):
         self.targets={}
         self.rules={}
         self.subdirs=[]
         self.variables={}
         self.default_target=""
-        self.path=os.getcwd()
-        self.in_source_build=False
-        self.build_directory=self.path+os.sep+"build"
-        self.compilationCache=FileCompilationTimesCache.FileCompilationTimesCache()
         self.ruleFile=ruleFile
         self.targetFile=targetFile
-        
+        self.root=False
+        self.parent=None
+        self.kids=[]
+        self.in_source_build=False
+
+        if kid and parent:
+            raise RuntimeError("a buildDirectory can't be created with a kid and a parent")
+        #checking folder one stop up
+        if kid:
+            self.path=os.path.dirname(kid.path)
+            self.kids.append(kid)
+        elif parent:
+            self.parent=parent
+            self.path=path
+        else:
+            self.path=os.getcwd()
+
+        self.build_directory=self.path+os.sep+"build"
+        self.compilationCache=FileCompilationTimesCache.FileCompilationTimesCache()
         self.checkRuleFile()
         if self.ruleFile:
             self.loadRuleFile()
         self.checkTargetFile()
         if self.targetFile:
             self.loadTargetFile()
+        if self.valid():
+            self.checkParent()
+            self.checkKids()
     def __str__(self):
 
         returnString=""
@@ -127,8 +147,44 @@ class BuildDirectory:
             returnString+="\t"+element+" : "+str(self.variables[element])+"\n"
         returnString+="default_target :"+self.default_target +"\n"
         returnString+="in_source_build :"+str(self.in_source_build)+"\n" 
-        returnString+="path :"+self.path
+        returnString+="path :"+self.path+"\n"
+        returnString+="ROOT: "+str(self.root)
         return returnString
+    
+    def findRule(self,rule):
+        if rule in self.rules:
+            return self.rules[rule]
+        if self.parent:
+            return self.parent.findRule(rule)
+        return None
+
+    def checkParent(self):
+        if self.parent:
+            return
+        if self.root:
+            return
+        self.parent=BuildDirectory("","",self)
+        if not self.parent.valid():
+            self.parent=None
+
+    def checkKids(self):
+        for element in self.subdirs:
+            newPath=self.path+os.sep+element
+            safe=True
+            for kid in self.kids:
+                if kid.path==newPath:
+                    safe=False
+            if safe:
+                newKid=BuildDirectory("","",None,self,newPath)
+                if newKid.valid():
+                    self.kids.append(newKid)
+
+
+    def valid(self):
+        if self.ruleFile or self.targetFile:
+            return True
+        return False
+
 
     def checkRuleFile(self):
         if self.ruleFile:
@@ -170,10 +226,9 @@ class BuildDirectory:
         for element in self.targets.copy().values():
             if element.automatic:
                 self.buildAutomaticDependency(element)
-        print(self)
 
     def automaticScanningTarget(self,target):
-        fileToScan=target.input
+        fileToScan=target["input"]
         importExports=scanner.scan(fileToScan)
         target.imports=importExports["imports"]
         target.exports=importExports["exports"]
@@ -191,7 +246,8 @@ class BuildDirectory:
     
     def addSystemHeaderTarget(self,importVal):
         name=importVal[0][1:-1]
-        if name in self.targets:
+        foundTarget=self.findTarget(name)
+        if foundTarget:
             return name
         target=Target(self)
         target.target=name
@@ -203,24 +259,59 @@ class BuildDirectory:
     def buildAutomaticDependency(self,target):
         for element in target.imports:
             if self.checkIfSystemHeader(element):
-                print(" {} is a system header ".format(element))
                 systemHeaderTarget= self.addSystemHeaderTarget(element)
                 target.deps.append(systemHeaderTarget)
                 continue
-            dependencyTarget=self.findTargetFromExport(element)
-            if dependencyTarget:
-                if dependencyTarget==target:
-                    raise RuntimeError("target {} depends on it self".format(target.target))
-                target.deps.append(dependencyTarget.target)
-                print("found target {} that provides {}".format(dependencyTarget.target,element))
+            target.deps.append(element[0])
+            #needs to find target after all files have been parsed
+            
+            # dependencyTarget=self.findTargetFromExport(element)
+            # if dependencyTarget:
+            #     if dependencyTarget==target:
+            #         raise RuntimeError("target {} depends on it self".format(target.target))
+            #     target.deps.append(dependencyTarget.target)
+            # else:
+            #     raise RuntimeError("target {} depends on {} but it wasn't found ".format(target.target,element))
 
-
-    def findTargetFromExport(self,export):
+    #search whole project, order doesn't matter since names shall be unique
+    def findTargetFromExport(self,export,searcher=None):
+        print("searching {}".format(self.path))
         for element in self.targets.values():
             if element.exports:
                 if export ==element.exports[0]:
                     return element
+        print(self.kids)
+        for element in self.kids:
+            if element!=searcher:
+                target=element.findTargetFromExport(export,self)
+                if target:
+                    return target
+        if self.parent and self.parent!=searcher:
+            return self.parent.findTargetFromExport(export,self)
 
+    def findTarget(self,targetName,searcher=None):
+        if targetName in self.targets:
+            return self.targets[targetName]
+        for element in self.kids:
+            if element!=searcher:
+                target=element.findTarget(targetName,self)
+                if target:
+                    return target
+        if self.parent and self.parent!=searcher:
+            return self.parent.findTarget(targetName,self)
+        
+        return None
+
+    def findAllTargets(self,searcher=None):
+        toReturn=[]
+        toReturn+=self.targets.keys()
+        for element in self.kids:
+            if element!=searcher:
+                toReturn+=element.findAllTargets(self)
+        if self.parent and self.parent!=searcher:
+            toReturn+=self.parent.findAllTargets(self)
+        
+        return toReturn
 
 
     def pathToModuleName(self,path):
@@ -251,21 +342,27 @@ class BuildDirectory:
         else:
             return self.build_directory
 
+    #this is ugly and should be optimized
     def allDependencies(self,targetName):
         targetsDeps=list(self.getRequiredTargets(targetName).values())
-        targetsDepsInstances=[self.targets[x] for x in self.targets]
+        targetsDepsFlatten=[]
+        for element in targetsDeps:
+            targetsDepsFlatten.extend(element)
+        targetsDepsFlatten = list(dict.fromkeys(targetsDepsFlatten))
+        targetsDepsInstances=[self.findTarget(x) for x in targetsDepsFlatten]
+        #they way this is used in rules means that a target must depend on itself
+        targetsDepsInstances.append(self.findTarget(targetName))
         return targetsDepsInstances
 
-    def findTarget(self,targetName):
-        if targetName in self.targets:
-            return self.targets[targetName]
-        raise KeyError("target {} not found in directory {}",targetName,self.path)
+
 
 
     def searchFromTarget(self,key):
         if key in self.variables:
             return self.variables[key]
-        raise KeyError("key {} not found in directory {}".format(key,self.path))
+        if self.parent:
+            return self.parent.searchFromTarget(key)
+        return None
 
     def checkSpecialVariables(self,variable:str,val):
         if variable.lower()=="default_target":
@@ -279,7 +376,10 @@ class BuildDirectory:
             return True
         if variable.lower()=="build_directory":
             self.build_directory=os.path.abspath(val)
-            return True        
+            return True
+        if variable.lower()=="root":
+            self.root=val.lower()=="true"
+            return True     
         return False
 
     def build(self):
@@ -303,11 +403,17 @@ class BuildDirectory:
                 raise RuntimeError("default target {} not found".format(self.default_target))
             decidedTarget=self.default_target
         
+        print(decidedTarget)
+
         #step two, find all the targets required to build the main target
         requiredTargets=self.getRequiredTargets(decidedTarget)
 
+        print(requiredTargets)
+
         #step three, find the order in which to build it
         buildOrder=self.decideBuildOrder(requiredTargets)
+
+        print(buildOrder)
 
         #we need to build the commands in the reverse order
         buildOrder.reverse()
@@ -336,7 +442,7 @@ class BuildDirectory:
         for batch in buildOrder:
             newBatch=[]
             for target in batch:
-                if self.targets[target].dirty:
+                if self.findTarget(target).dirty:
                     newBatch.append(target)
             if newBatch:
                 newOrder.append(newBatch)
@@ -346,14 +452,16 @@ class BuildDirectory:
         dirtyTargets=[]
         #if they define an input file then we check if it has changed
         for element in buildTargets:
-            if self.targets[element]["input"]:
-                fileName="{}/{}".format(self.targets[element]["path"],self.targets[element]["input"])
+            foundTarget=self.findTarget(element)
+            if foundTarget["input"]:
+                fileName=foundTarget["input"]
                 if self.compilationCache.getCompilationTime(fileName)!=os.path.getmtime(fileName):
                     dirtyTargets.append(element)
         #the we check if the output file(s) exists
         for element in buildTargets:
-            if self.targets[element]["output"]:
-                for fileName in self.targets[element]["output"]:
+            foundTarget=self.findTarget(element)
+            if foundTarget["output"]:
+                for fileName in foundTarget["output"]:
                     if not os.path.isfile(fileName):
                         dirtyTargets.append(element)
 
@@ -363,7 +471,7 @@ class BuildDirectory:
             if dirtyTargets[0] in dirtyTargetsVisited:
                 dirtyTargets.remove(dirtyTargets[0])
                 continue
-            self.targets[dirtyTargets[0]].dirty=True
+            self.findTarget(dirtyTargets[0]).dirty=True
             #find targets that depends on this target
             for element in requiredTargets:
                 if dirtyTargets[0] in requiredTargets[element]:
@@ -371,7 +479,7 @@ class BuildDirectory:
             dirtyTargetsVisited.append(dirtyTargets[0])
             dirtyTargets=dirtyTargets[1:]
         for element in requiredTargets:
-            if self.targets[element].dirty:
+            if self.findTarget(element).dirty:
                 print("target {} is dirty".format(element))
 
         
@@ -390,12 +498,14 @@ class BuildDirectory:
             batches.pop(0)
             commands=[]
             for element in current_batch:
-                commands.append(self.targets[element].commands)
-                self.checkFolderStructure(self.targets[element])
+                foundTarget=self.findTarget(element)
+                commands.append(foundTarget.commands)
+                self.checkFolderStructure(foundTarget)
             tempCompilationTimes={}
             for element in current_batch:
-                if self.targets[element]["input"]:
-                    tempCompilationTimes["{}/{}".format(self.targets[element]["path"],self.targets[element]["input"])]=os.path.getmtime(self.targets[element]["input"])            
+                foundTarget=self.findTarget(element)
+                if foundTarget["input"]:
+                    tempCompilationTimes["{}/{}".format(foundTarget["path"],foundTarget["input"])]=os.path.getmtime(foundTarget["input"])            
             while commands:
                 commands_to_run_parallel=[]
                 for command in commands[:]:
@@ -407,8 +517,9 @@ class BuildDirectory:
                 #for element in commands_to_run_parallel:
                 self.run_commands(commands_to_run_parallel)
             for element in current_batch:
-                if self.targets[element]["input"]:
-                    self.compilationCache.setCompilationTime("{}/{}".format(self.targets[element]["path"],self.targets[element]["input"]),tempCompilationTimes["{}/{}".format(self.targets[element]["path"],self.targets[element]["input"])])
+                foundTarget=self.findTarget(element)
+                if foundTarget["input"]:
+                    self.compilationCache.setCompilationTime("{}/{}".format(foundTarget["path"],foundTarget["input"]),tempCompilationTimes["{}/{}".format(foundTarget["path"],foundTarget["input"])])
                 
     
     def run_commands(self,commands):
@@ -439,31 +550,29 @@ class BuildDirectory:
             self.buildCommand(element)
     
     def buildCommand(self,targetName):
-        if targetName not in self.targets:
+        target=self.findTarget(targetName)
+        if not target:
             raise RuntimeError("could not find target {}".format(targetName))
-        target=self.targets[targetName]
         rule = target.rule
-        if rule not in self.rules:
-            raise RuntimeError("rule {} for target {} could not be found".format(rule,targetName))
-        target.commands= self.rules[rule](target)
+        foundRule=self.findRule(rule)
+        if not foundRule:
+            raise RuntimeError("rule {} for self.rules[rule]target {} could not be found".format(rule,targetName))
+        target.commands= foundRule(target)
         
 
-    def findRule(self,name):
-        if name in self.rules:
-            return self.rules("name")
-        raise RuntimeError("rule {} not found".format(name))
-    
     #return all targets required to build targetName, if no name is specified then it just return all targets
     def getRequiredTargets(self,targetName=""):
         if not targetName:
             depTargets={}
-            for element in self.targets:
+            allProjectTargets=self.findAllTargets()
+            for element in allProjectTargets:
                 if element in depTargets:
                     raise RuntimeError("target {} already exists in dependency tree".format(element))
-                depTargets[element]=self.targets[element].deps
+                depTargets[element]=self.findTarget(element).deps
             #sanity check
             for element in depTargets:
                 for dep in depTargets[element]:
+                    print(depTargets)
                     if dep not in depTargets:
                         raise RuntimeError("target {} depends on {} but target is not defined".format(element,dep))
             return depTargets
@@ -472,12 +581,14 @@ class BuildDirectory:
             nodes_to_add=[]
             nodes_to_add.append(targetName)
             while nodes_to_add:
-                if nodes_to_add[0] in self.targets.keys():
-                    temp_nodes[nodes_to_add[0]]=self.targets[nodes_to_add[0]].deps
-                    for element in self.targets[nodes_to_add[0]].deps:
+                foundTarget=self.findTarget(nodes_to_add[0])
+                if foundTarget:
+                    temp_nodes[nodes_to_add[0]]=foundTarget.deps
+                    for element in foundTarget.deps:
                         if element not in temp_nodes.keys():
                             nodes_to_add.append(element)
                 else:
+                    #why the fuck this
                     temp_nodes[nodes_to_add[0]]=[]
                 nodes_to_add.pop(0)
             return temp_nodes
@@ -489,8 +600,9 @@ class BuildDirectory:
         while sorted:
             safe=True
             for element in batches[-1]:
-                if element in self.targets.keys():
-                    if sorted[0] in self.targets[element].deps:
+                foundTarget=self.findTarget(element)
+                if foundTarget:
+                    if sorted[0] in foundTarget.deps:
                         safe=False
             if not safe:
                 batches.append([])

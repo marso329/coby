@@ -1,0 +1,7 @@
+@SUBDIRS=[A,B,C,main]
+
+@IN_SOURCE_BUILD=false
+
+@BUILD_DIRECTORY=./build
+
+@ROOT=true

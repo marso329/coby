@@ -16,3 +16,5 @@ C=user_module(input=C.cxx,automatic=true)
 @IN_SOURCE_BUILD=false
 
 @BUILD_DIRECTORY=./build
+
+@ROOT=true
