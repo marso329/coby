@@ -18,6 +18,7 @@ class FileCompilationTimesCache:
     def getCompilationTime(self,fileName):
         if fileName in self.times:
             return self.times[fileName]
+        print("filename not found")
         return 0.0
     def setCompilationTime(self,fileName,time):
         self.times[fileName]=time

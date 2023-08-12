@@ -184,7 +184,7 @@ class TargetFile:
         else:
             raise RuntimeError("undefined type")
         for element in targets:
-            if element in buildDir.targets:
+            if buildDir.findTarget(element):
                 raise RuntimeError("duplicate target name {}".format(element))
             target=BuildDirectory.Target(buildDir)
             target.rule=valName

@@ -10,14 +10,15 @@ def init(vars):
     vars["LDFLAGS"]=["-std=c++20","-g"]
 
 def stdlib(vars):
-    command=vars["CXX"]+vars["CXXFLAGS"]+["-xc++-system-header","--precompile"]+[vars["target"]]+["-o","{}/{}.pcm".format(vars["output_dir"],vars["target"])]
-    vars["output"]="{}/{}.pcm".format(vars["output_dir"],vars["target"])
-    vars["BMI"]="{}/{}.pcm".format(vars["output_dir"],vars["target"])
+    command=vars["CXX"]+vars["CXXFLAGS"]+["-xc++-system-header","--precompile"]+[vars["target"]]+["-o","{}/{}.pcm".format(vars["cache_dir"],vars["target"])]
+    vars["output"]="{}/{}.pcm".format(vars["cache_dir"],vars["target"])
+    vars["BMI"]="{}/{}.pcm".format(vars["cache_dir"],vars["target"])
 
-    command2=vars["CXX"]+vars["CXXFLAGS"]+["{}/{}.pcm".format(vars["output_dir"],vars["target"])]+["-c","-o","{}/{}.o".format(vars["output_dir"],vars["target"])]
-    objectFile="{}/{}.o".format(vars["output_dir"],vars["target"])
+    command2=vars["CXX"]+vars["CXXFLAGS"]+["{}/{}.pcm".format(vars["cache_dir"],vars["target"])]+["-c","-o","{}/{}.o".format(vars["cache_dir"],vars["target"])]
+    objectFile="{}/{}.o".format(vars["cache_dir"],vars["target"])
     vars["output"]=objectFile
     vars["objectFile"]=objectFile
+    vars["output_dir"]=vars["cache_dir"]
     return [command,command2]
 
 

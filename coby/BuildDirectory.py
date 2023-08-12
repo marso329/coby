@@ -20,6 +20,7 @@ class Target:
         self.objectFile=""
         self.buildDir=buildDir
         self.output=[]
+        self.output_dir=None
         self.commands=[]
         self.lastChangeTime=0
         self.dirty=False
@@ -46,7 +47,11 @@ class Target:
         if key=="all_dependencies":
             return self.buildDir.allDependencies(self.target)
         if key=="output_dir":
+            if self.output_dir:
+                return self.output_dir
             return self.buildDir.getOutputDir()
+        if key=="cache_dir":
+            return self.buildDir.getCacheDir()
         if key=="output":
             return self.output
         if key=="BMI":
@@ -65,6 +70,8 @@ class Target:
             self.output.append(value)
         elif key=="input":
             self.input=value
+        elif key=="output_dir":
+            self.output_dir=value
         elif key=="BMI":
             if self.BMI:
                 raise RuntimeError("BMI is only allowed to be set once")
@@ -105,7 +112,7 @@ class BuildDirectory:
         self.root=False
         self.parent=None
         self.kids=[]
-        self.in_source_build=False
+        self.in_source_build=None
 
         if kid and parent:
             raise RuntimeError("a buildDirectory can't be created with a kid and a parent")
@@ -119,7 +126,8 @@ class BuildDirectory:
         else:
             self.path=os.getcwd()
 
-        self.build_directory=self.path+os.sep+"build"
+        self.build_directory=None
+        #self.build_directory=self.path+os.sep+"build"
         self.compilationCache=FileCompilationTimesCache.FileCompilationTimesCache()
         self.checkRuleFile()
         if self.ruleFile:
@@ -130,6 +138,7 @@ class BuildDirectory:
         if self.valid():
             self.checkParent()
             self.checkKids()
+        self.build_directory=self.decideBuildDirectory()
     def __str__(self):
 
         returnString=""
@@ -151,6 +160,27 @@ class BuildDirectory:
         returnString+="ROOT: "+str(self.root)
         return returnString
     
+    def findParentBuildDirectory(self):
+        if self.build_directory:
+            return self.build_directory
+        if self.parent:
+            currentDir=os.path.basename(os.path.normpath(self.path))
+            return self.parent.findParentBuildDirectory()+os.sep+currentDir
+        return self.path+os.sep+"build"
+    def findParentInSourceBuild(self):
+            if self.in_source_build:
+                return self.in_source_build
+            if self.parent:
+                return self.parent.findParentInSourceBuild()
+            return None
+
+    def decideBuildDirectory(self):
+        buildDir=self.findParentBuildDirectory()
+        inSourceBuild=self.findParentInSourceBuild()
+        if inSourceBuild:
+            return self.path+os.sep+"build"
+        return buildDir
+
     def findRule(self,rule):
         if rule in self.rules:
             return self.rules[rule]
@@ -275,12 +305,10 @@ class BuildDirectory:
 
     #search whole project, order doesn't matter since names shall be unique
     def findTargetFromExport(self,export,searcher=None):
-        print("searching {}".format(self.path))
         for element in self.targets.values():
             if element.exports:
                 if export ==element.exports[0]:
                     return element
-        print(self.kids)
         for element in self.kids:
             if element!=searcher:
                 target=element.findTargetFromExport(export,self)
@@ -341,6 +369,19 @@ class BuildDirectory:
             return self.path
         else:
             return self.build_directory
+    
+    def getTopBuildDir(self):
+        if self.parent:
+            buildDir=self.parent.getTopBuildDir()
+            if buildDir:
+                return buildDir
+        return self.getOutputDir()
+        
+            
+    
+    def getCacheDir(self):
+        return self.getTopBuildDir()+os.sep+"cache"
+
 
     #this is ugly and should be optimized
     def allDependencies(self,targetName):
@@ -403,17 +444,13 @@ class BuildDirectory:
                 raise RuntimeError("default target {} not found".format(self.default_target))
             decidedTarget=self.default_target
         
-        print(decidedTarget)
 
         #step two, find all the targets required to build the main target
         requiredTargets=self.getRequiredTargets(decidedTarget)
 
-        print(requiredTargets)
-
         #step three, find the order in which to build it
         buildOrder=self.decideBuildOrder(requiredTargets)
 
-        print(buildOrder)
 
         #we need to build the commands in the reverse order
         buildOrder.reverse()
@@ -478,9 +515,6 @@ class BuildDirectory:
                     dirtyTargets.append(element)
             dirtyTargetsVisited.append(dirtyTargets[0])
             dirtyTargets=dirtyTargets[1:]
-        for element in requiredTargets:
-            if self.findTarget(element).dirty:
-                print("target {} is dirty".format(element))
 
         
 
@@ -505,7 +539,7 @@ class BuildDirectory:
             for element in current_batch:
                 foundTarget=self.findTarget(element)
                 if foundTarget["input"]:
-                    tempCompilationTimes["{}/{}".format(foundTarget["path"],foundTarget["input"])]=os.path.getmtime(foundTarget["input"])            
+                    tempCompilationTimes[foundTarget["input"]]=os.path.getmtime(foundTarget["input"])            
             while commands:
                 commands_to_run_parallel=[]
                 for command in commands[:]:
@@ -519,7 +553,7 @@ class BuildDirectory:
             for element in current_batch:
                 foundTarget=self.findTarget(element)
                 if foundTarget["input"]:
-                    self.compilationCache.setCompilationTime("{}/{}".format(foundTarget["path"],foundTarget["input"]),tempCompilationTimes["{}/{}".format(foundTarget["path"],foundTarget["input"])])
+                    self.compilationCache.setCompilationTime(foundTarget["input"],tempCompilationTimes[foundTarget["input"]])
                 
     
     def run_commands(self,commands):
@@ -572,7 +606,6 @@ class BuildDirectory:
             #sanity check
             for element in depTargets:
                 for dep in depTargets[element]:
-                    print(depTargets)
                     if dep not in depTargets:
                         raise RuntimeError("target {} depends on {} but target is not defined".format(element,dep))
             return depTargets
