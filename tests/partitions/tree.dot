@@ -1,0 +1,22 @@
+digraph graphname { 
+main [label="main "]
+D [label="D "]
+iostream [label="iostream "]
+DA [label="D:A "]
+DB [label="D:B "]
+DC [label="D:C "]
+string [label="string "]
+cassert [label="cassert "]
+main->D;
+main->iostream;
+D->DA;
+D->DB;
+D->DC;
+DA->string;
+DA->DB;
+DB->string;
+DB->cassert;
+DB->DC;
+DC->string;
+DC->cassert;
+}

@@ -1,0 +1,7 @@
+D:A=user_module(input=A.cxx,automatic=true)
+
+D:B=user_module(input=B.cxx,automatic=true)
+
+D:C=user_module(input=C.cxx,automatic=true)
+
+D=user_module(input=D.cxx,automatic=true)

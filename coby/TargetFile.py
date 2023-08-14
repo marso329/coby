@@ -134,7 +134,7 @@ class TargetFile:
     def name(self,line):
         if not line:
             return False,"",line
-        _rex = re.compile("[/0-9a-zA-Z._-]+$")
+        _rex = re.compile("[/0-9a-zA-Z._:-]+$")
         if _rex.match(line[0]):
             val=line[0]
             val=val.replace("\n","")

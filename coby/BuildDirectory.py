@@ -85,7 +85,6 @@ class Target:
             raise RuntimeError("key {} undefined".format(key))
 
 
-
     def checkSpecialVariables(self,variable:str,val):
         if variable.lower()=="input":
             self.input=val
@@ -141,7 +140,7 @@ class BuildDirectory:
         self.build_directory=self.decideBuildDirectory()
     def __str__(self):
 
-        returnString=""
+        returnString="\n---------------------------------------------------------------\n"
         returnString+="targets:\n"
         for element in self.targets:
             returnString+="\t"+element+" : "+str(self.targets[element])+"\n"
@@ -157,9 +156,26 @@ class BuildDirectory:
         returnString+="default_target :"+self.default_target +"\n"
         returnString+="in_source_build :"+str(self.in_source_build)+"\n" 
         returnString+="path :"+self.path+"\n"
-        returnString+="ROOT: "+str(self.root)
+        returnString+="ROOT: "+str(self.root)+"\n"
+        returnString+="outputdir: "+self.build_directory+"\n"
+        returnString+="parent: "+str(self.parent)+"\n"
         return returnString
     
+
+    def generateDot(self,outputFile):
+        buildOrder=self.build(returnRequiredTargets=True)
+        tempString=""
+        tempString+= "digraph graphname { \n"
+        for element in buildOrder:
+            tempString +=element.replace(":","")+' [label=\"'+ element +' \"]\n'
+
+        for element in buildOrder:
+            for target in buildOrder[element]:
+                tempString+=element.replace(":","")+"->"+target.replace(":","")+";\n"
+        tempString+="}"
+        with open(outputFile, "w") as text_file:
+            text_file.write(tempString)
+
     def findParentBuildDirectory(self):
         if self.build_directory:
             return self.build_directory
@@ -177,6 +193,8 @@ class BuildDirectory:
     def decideBuildDirectory(self):
         buildDir=self.findParentBuildDirectory()
         inSourceBuild=self.findParentInSourceBuild()
+        print(buildDir)
+        print(inSourceBuild)
         if inSourceBuild:
             return self.path+os.sep+"build"
         return buildDir
@@ -292,7 +310,7 @@ class BuildDirectory:
                 systemHeaderTarget= self.addSystemHeaderTarget(element)
                 target.deps.append(systemHeaderTarget)
                 continue
-            target.deps.append(element[0])
+            target.deps.append(":".join(element))
             #needs to find target after all files have been parsed
             
             # dependencyTarget=self.findTargetFromExport(element)
@@ -307,7 +325,7 @@ class BuildDirectory:
     def findTargetFromExport(self,export,searcher=None):
         for element in self.targets.values():
             if element.exports:
-                if export ==element.exports[0]:
+                if export == ":".join(element.exports):
                     return element
         for element in self.kids:
             if element!=searcher:
@@ -423,7 +441,7 @@ class BuildDirectory:
             return True     
         return False
 
-    def build(self):
+    def build(self,returnRequiredTargets=False):
         
         #step one, decide the main target
         decidedTarget=""
@@ -448,8 +466,12 @@ class BuildDirectory:
         #step two, find all the targets required to build the main target
         requiredTargets=self.getRequiredTargets(decidedTarget)
 
+        if returnRequiredTargets:
+            return requiredTargets
+
         #step three, find the order in which to build it
         buildOrder=self.decideBuildOrder(requiredTargets)
+
 
 
         #we need to build the commands in the reverse order
@@ -604,6 +626,7 @@ class BuildDirectory:
                     raise RuntimeError("target {} already exists in dependency tree".format(element))
                 depTargets[element]=self.findTarget(element).deps
             #sanity check
+            print(depTargets)
             for element in depTargets:
                 for dep in depTargets[element]:
                     if dep not in depTargets:
@@ -679,9 +702,41 @@ class BuildDirectory:
 
                 if indegrees[dependency] == 0:
                     queue.append(dependency)
-
+        
         # check for circular dependencies
         if len(final_order) != len(nodes):
-            raise Exception("Circular dependency found.")
+            cycles = [[node]+path  for node in nodes for path in self.dfs(nodes, node, node)]
+            chain=cycles[0]
+            tempString=""
+            index=0
+            for element in chain:
+                if index!=len(chain)-1:
+                    tempString+=element+"->"
+                else:
+                    tempString+=element
+                index+=1
+            raise Exception("Circular dependency found.",tempString)
 
         return final_order
+
+    def dfs(self,graph, start, end):
+        fringe = [(start, [])]
+        while fringe:
+            state, path = fringe.pop()
+            if path and state == end:
+                yield path
+                continue
+            for next_state in graph[state]:
+                if next_state in path:
+                    continue
+                fringe.append((next_state, path+[next_state]))
+
+    def findCircular(self,items,current,start):
+        subnodes=items[current]
+        for element in subnodes:
+            if element==start:
+                return [element]
+            val=self.findCircular(items,element,start)
+            if val:
+                return [element]+ val
+        return None

@@ -29,6 +29,18 @@ def buildDirectory(ruleFile,targetFile):
     buildDir=BuildDirectory.BuildDirectory(ruleFile,targetFile)
     buildDir.build()    
 
+def generateDotFunction(arguments):
+    ruleFile=None
+    if arguments.rule:
+        ruleFile=arguments.rule
+    targetFile=None
+    if arguments.target:
+        targetFile=arguments.target
+    if not arguments.output:
+        raise RuntimeError("generateDot requires an output file")
+    buildDir=BuildDirectory.BuildDirectory(ruleFile,targetFile)
+    buildDir.generateDot(arguments.output)    
+
 def buildFunction(arguments):
     print("building")
     ruleFile=None
@@ -39,11 +51,22 @@ def buildFunction(arguments):
         targetFile=arguments.target
     buildDirectory(ruleFile,targetFile)
 
-def printFileImportExportsFunction(arguments):
+def testScannerFunction(arguments):
     print("printfile")
     if not arguments.file:
-        raise RuntimeError("printFileImportExports requires a file")
+        raise RuntimeError("testScanner requires a file")
     print(scanner.scan(arguments.file))
+
+def printBuildFunction(arguments):
+    ruleFile=None
+    if arguments.rule:
+        ruleFile=arguments.rule
+    targetFile=None
+    if arguments.target:
+        targetFile=arguments.target
+    buildDir=BuildDirectory.BuildDirectory(ruleFile,targetFile)
+    print(buildDir)
+
 def main():
     parser = argparse.ArgumentParser(prog='coby')
     #parser.add_argument('toDo',nargs='?',default="build",type=str)
@@ -52,9 +75,22 @@ def main():
     build.add_argument('-rule',"-r")
     build.add_argument('-target',"-t")
     build.set_defaults(func=buildFunction)
-    printFileImportExports=subparsers.add_parser('printFileImportExports')
-    printFileImportExports.add_argument('-file',"-f")
-    printFileImportExports.set_defaults(func=printFileImportExportsFunction)
+    
+    testScanner=subparsers.add_parser('testScanner')
+    testScanner.add_argument('-file',"-f")
+    testScanner.set_defaults(func=testScannerFunction )
+    
+    generateDot=subparsers.add_parser('generateDot')
+    generateDot.add_argument('-output',"-o")
+    generateDot.add_argument('-rule',"-r")
+    generateDot.add_argument('-target',"-t")
+    generateDot.set_defaults(func=generateDotFunction)
+    
+    printBuild=subparsers.add_parser('printBuild')
+    printBuild.add_argument('-rule',"-r")
+    printBuild.add_argument('-target',"-t")
+    printBuild.set_defaults(func=printBuildFunction)
+
     arguments = parser.parse_args()
     arguments.func(arguments)
 
