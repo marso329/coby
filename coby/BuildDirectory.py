@@ -100,7 +100,7 @@ class Target:
 
 
 class BuildDirectory:
-    def __init__(self,ruleFile,targetFile,kid=None,parent=None,path=""):
+    def __init__(self,ruleFile,targetFile,kid=None,parent=None,path="",firstDir=True):
         self.targets={}
         self.rules={}
         self.subdirs=[]
@@ -112,6 +112,7 @@ class BuildDirectory:
         self.parent=None
         self.kids=[]
         self.in_source_build=None
+        self.firstDir=firstDir
 
         if kid and parent:
             raise RuntimeError("a buildDirectory can't be created with a kid and a parent")
@@ -127,7 +128,8 @@ class BuildDirectory:
 
         self.build_directory=None
         #self.build_directory=self.path+os.sep+"build"
-        self.compilationCache=FileCompilationTimesCache.FileCompilationTimesCache()
+        #self.compilationCache=FileCompilationTimesCache.FileCompilationTimesCache()
+        self.compilationCache=None
         self.checkRuleFile()
         if self.ruleFile:
             self.loadRuleFile()
@@ -137,7 +139,9 @@ class BuildDirectory:
         if self.valid():
             self.checkParent()
             self.checkKids()
-        self.build_directory=self.decideBuildDirectory()
+        if self.firstDir:
+            self.traverseForBuildDirectory()
+            self.traverseForFileCache()
     def __str__(self):
 
         returnString="\n---------------------------------------------------------------\n"
@@ -159,8 +163,31 @@ class BuildDirectory:
         returnString+="ROOT: "+str(self.root)+"\n"
         returnString+="outputdir: "+self.build_directory+"\n"
         returnString+="parent: "+str(self.parent)+"\n"
+        returnString+="cachedir: "+self.getCacheDir()+"\n"
         return returnString
     
+    def createFileCache(self):
+        self.compilationCache=FileCompilationTimesCache.FileCompilationTimesCache(self.path)
+        self.setFileCache(self.compilationCache)
+
+    def setFileCache(self,cache):
+        self.compilationCache=cache
+        for element in self.kids:
+            element.setFileCache(cache)
+
+    def traverseForFileCache(self):
+        node=self
+        while node.parent:
+            node=node.parent
+        #node is now the highest directory
+        node.createFileCache()       
+
+    def traverseForBuildDirectory(self):
+        node=self
+        while node.parent:
+            node=node.parent
+        #node is now the highest directory
+        node.decideBuildDirectory()
 
     def generateDot(self,outputFile):
         buildOrder=self.build(returnRequiredTargets=True)
@@ -178,6 +205,10 @@ class BuildDirectory:
 
     def findParentBuildDirectory(self):
         if self.build_directory:
+            if os.path.isabs(self.build_directory):
+                return self.build_directory
+            else:
+                return os.path.join(self.path,self.build_directory)
             return self.build_directory
         if self.parent:
             currentDir=os.path.basename(os.path.normpath(self.path))
@@ -193,11 +224,12 @@ class BuildDirectory:
     def decideBuildDirectory(self):
         buildDir=self.findParentBuildDirectory()
         inSourceBuild=self.findParentInSourceBuild()
-        print(buildDir)
-        print(inSourceBuild)
         if inSourceBuild:
-            return self.path+os.sep+"build"
-        return buildDir
+            self.build_directory=self.path+os.sep+"build"
+            return
+        self.build_directory= buildDir
+        for element in self.kids:
+            element.decideBuildDirectory()
 
     def findRule(self,rule):
         if rule in self.rules:
@@ -211,7 +243,7 @@ class BuildDirectory:
             return
         if self.root:
             return
-        self.parent=BuildDirectory("","",self)
+        self.parent=BuildDirectory("","",self,firstDir=False)
         if not self.parent.valid():
             self.parent=None
 
@@ -223,7 +255,7 @@ class BuildDirectory:
                 if kid.path==newPath:
                     safe=False
             if safe:
-                newKid=BuildDirectory("","",None,self,newPath)
+                newKid=BuildDirectory("","",None,self,newPath,firstDir=False)
                 if newKid.valid():
                     self.kids.append(newKid)
 
@@ -434,7 +466,10 @@ class BuildDirectory:
             self.in_source_build=val.lower()=="true"
             return True
         if variable.lower()=="build_directory":
-            self.build_directory=os.path.abspath(val)
+            if os.path.isabs(val):
+                self.build_directory=val
+            else:
+                return os.path.join(self.path,val)
             return True
         if variable.lower()=="root":
             self.root=val.lower()=="true"
@@ -626,7 +661,6 @@ class BuildDirectory:
                     raise RuntimeError("target {} already exists in dependency tree".format(element))
                 depTargets[element]=self.findTarget(element).deps
             #sanity check
-            print(depTargets)
             for element in depTargets:
                 for dep in depTargets[element]:
                     if dep not in depTargets:
