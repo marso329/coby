@@ -10,6 +10,19 @@ from coby import FileCompilationTimesCache
 from coby import TargetFile
 from coby import scanner
 
+class TargetNotFound(Exception):
+    """Exception raised for errors in the input salary.
+
+    Attributes:
+        salary -- input salary which caused the error
+        message -- explanation of the error
+    """
+
+    def __init__(self, target,message):
+        self.target = target
+        self.message = "Target {} not found ".format(target)
+        super().__init__(self.message)
+
 class Target:
     def __init__(self,buildDir):
         self.rule=""
@@ -38,8 +51,10 @@ class Target:
             for element in self.deps:
                 realTarget.append(self.buildDir.findTarget(element))
             return realTarget
-        if key=="input":
+        if key=="input" and self.input:
             return self.buildDir.path+os.sep+self.input
+        if key=="input" :
+            return ""
         if key=="rule":
             return self.rule
         if key=="target":
@@ -258,6 +273,8 @@ class BuildDirectory:
                 newKid=BuildDirectory("","",None,self,newPath,firstDir=False)
                 if newKid.valid():
                     self.kids.append(newKid)
+                else:
+                    raise RuntimeError("{} includes  {} but not rule or targetfile was found".format(self.path,element))
 
 
     def valid(self):
@@ -513,7 +530,15 @@ class BuildDirectory:
         buildOrder.reverse()
 
         #step four, build the commands for the targets
-        self.buildCommands(buildOrder)
+        try:
+            self.buildCommands(buildOrder)
+        except TargetNotFound as e:
+            targetsDependsOnThis=[]
+            for element in requiredTargets:
+                if e.target in requiredTargets[element]:
+                    targetsDependsOnThis.append(element)
+            print("target {} was not found which is required by {}".format(e.target,targetsDependsOnThis))
+            sys.exit(1)
 
         #revert the reverse
         buildOrder.reverse()
@@ -548,9 +573,12 @@ class BuildDirectory:
         for element in buildTargets:
             foundTarget=self.findTarget(element)
             if foundTarget["input"]:
+                print("input {} ".format(foundTarget["input"]))
                 fileName=foundTarget["input"]
                 if self.compilationCache.getCompilationTime(fileName)!=os.path.getmtime(fileName):
                     dirtyTargets.append(element)
+                    print("target {} is dirty because of compilation cache".format(element))
+                    print(foundTarget)
         #the we check if the output file(s) exists
         for element in buildTargets:
             foundTarget=self.findTarget(element)
@@ -558,6 +586,9 @@ class BuildDirectory:
                 for fileName in foundTarget["output"]:
                     if not os.path.isfile(fileName):
                         dirtyTargets.append(element)
+                        print("target {} is dirty because of output file not found".format(element))
+        print("dirty target: ")
+        print(dirtyTargets)
 
 
         dirtyTargetsVisited=[]
@@ -643,7 +674,7 @@ class BuildDirectory:
     def buildCommand(self,targetName):
         target=self.findTarget(targetName)
         if not target:
-            raise RuntimeError("could not find target {}".format(targetName))
+            raise TargetNotFound(targetName,"could not find target {}".format(targetName))
         rule = target.rule
         foundRule=self.findRule(rule)
         if not foundRule:
