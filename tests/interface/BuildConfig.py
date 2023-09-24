@@ -36,6 +36,19 @@ def user_module(vars):
     return [command1,command2]
 
 
+def user_module_implementation(vars):
+    command1=vars["CXX"]+vars["CXXFLAGS"]
+    for element in vars["deps"]:
+        command1.append("-fmodule-file={}/{}.pcm".format(element["output_dir"],element["target"]))
+    command1+=["-c",vars["input"]]
+
+    objectFile="{}/{}.o".format(vars["output_dir"],vars["target"])
+    vars["output"]=objectFile
+    vars["objectFile"]=objectFile
+    command1+=["-o",objectFile]
+    return [command1]
+
+
 def binary(vars):
     command1=vars["CXX"]+vars["CXXFLAGS"]
     command1.append(vars["input"])

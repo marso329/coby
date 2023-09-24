@@ -1,13 +1,14 @@
 #creation = rule(input=inputfile,deps=[dependencies....])
 
-
-
-
 ui_mainwindow=uic(input=mainwindow.ui)
 
 MainWindow=qt_object(input=MainWindow.cxx,deps=[ui_mainwindow])
 
 main=binary(input=main.cxx,deps=[MainWindow])
 
+@IN_SOURCE_BUILD=false
 
+@BUILD_DIRECTORY=./build
+
+@ROOT=true
 @DEFAULT_TARGET=main

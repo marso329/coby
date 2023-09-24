@@ -26,8 +26,10 @@ def uic(vars):
     command4=["sed", "-i", '/^class.*/i export',outputFile ]
     command5=["sed", "-i", '/^namespace.*/i export',outputFile ]
 
-    oldInput=vars["input"]
-    vars["input"]="{}/{}.cxx".format(vars["output_dir"],vars["target"])
+    oldInput=vars["inputFile"]
+    #this is ugly as fuck but it is not meant to use files in the output directory as inputs, should be fixed in the future
+    relativePath=os.path.relpath( vars["output_dir"],vars["path"])
+    vars["input"]="{}/{}.cxx".format(relativePath,vars["target"])
     qtModuleCommands=qt_module(vars)
     vars["input"]=oldInput
     return [command1,command2,command3,command4,command5]+qtModuleCommands
@@ -37,14 +39,15 @@ def getQTIncludes(vars):
 
 
 def stdlib(vars):
-    command=vars["CXX"]+vars["CXXFLAGS"]+["-xc++-system-header","--precompile"]+[vars["target"]]+["-o","{}/{}.pcm".format(vars["output_dir"],vars["target"])]
-    vars["output"]="{}/{}.pcm".format(vars["output_dir"],vars["target"])
-    vars["BMI"]="{}/{}.pcm".format(vars["output_dir"],vars["target"])
+    command=vars["CXX"]+vars["CXXFLAGS"]+["-xc++-system-header","--precompile"]+[vars["target"]]+["-o","{}/{}.pcm".format(vars["cache_dir"],vars["target"])]
+    vars["output"]="{}/{}.pcm".format(vars["cache_dir"],vars["target"])
+    vars["BMI"]="{}/{}.pcm".format(vars["cache_dir"],vars["target"])
 
-    command2=vars["CXX"]+vars["CXXFLAGS"]+["{}/{}.pcm".format(vars["output_dir"],vars["target"])]+["-c","-o","{}/{}.o".format(vars["output_dir"],vars["target"])]
-    objectFile="{}/{}.o".format(vars["output_dir"],vars["target"])
+    command2=vars["CXX"]+vars["CXXFLAGS"]+["{}/{}.pcm".format(vars["cache_dir"],vars["target"])]+["-c","-o","{}/{}.o".format(vars["cache_dir"],vars["target"])]
+    objectFile="{}/{}.o".format(vars["cache_dir"],vars["target"])
     vars["output"]=objectFile
     vars["objectFile"]=objectFile
+    vars["output_dir"]=vars["cache_dir"]
     return [command,command2]
 
 def qt_object(vars):
@@ -65,8 +68,9 @@ def qt_object(vars):
     #piping data
     command4=[("command",["sed", "-n", '/QT_BEGIN_MOC_NAMESPACE/,/QT_END_MOC_NAMESPACE/p',outputFile]),("file",newTempFile)]
 
-    oldInput=vars["input"]
-    vars["input"]=newTempFile
+    oldInput=vars["inputFile"]
+    relativePath=os.path.relpath( vars["output_dir"],vars["path"])
+    vars["input"]="{}/temp_{}.cxx".format(relativePath,vars["target"])
     qtModuleCommands=qt_module(vars)
     vars["input"]=oldInput
 
@@ -105,6 +109,7 @@ def user_module(vars):
     vars["output"]=objectFile
     vars["objectFile"]=objectFile
     return [command1,command2]
+
 
 
 def binary(vars):

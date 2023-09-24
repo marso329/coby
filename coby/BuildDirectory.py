@@ -40,6 +40,7 @@ class Target:
         self.automatic=False
         self.imports=[]
         self.exports=[]
+        self.implementation=[]
     def __str__(self):
         returnString="("
         returnString+="rule: "+self.rule+", target: "+self.target+", deps: "+str(self.deps) +", input: "+self.input+", output: "+str(self.output)
@@ -53,6 +54,8 @@ class Target:
             return realTarget
         if key=="input" and self.input:
             return self.buildDir.path+os.sep+self.input
+        if key=="inputFile" and self.input:
+            return self.input
         if key=="input" :
             return ""
         if key=="rule":
@@ -75,7 +78,8 @@ class Target:
             return self.objectFile
         if key=="path":
             return self.buildDir.path
-        
+        if key=="implementation":
+            return self.implementation        
         val= self.buildDir.searchFromTarget(key)
         if val:
             return val
@@ -109,6 +113,9 @@ class Target:
             return True
         if variable.lower()=="automatic":
             self.automatic=val=="true"
+            return True
+        if variable.lower()=="implementation":
+            self.implementation=val
             return True
         return False
 
@@ -573,12 +580,9 @@ class BuildDirectory:
         for element in buildTargets:
             foundTarget=self.findTarget(element)
             if foundTarget["input"]:
-                print("input {} ".format(foundTarget["input"]))
                 fileName=foundTarget["input"]
                 if self.compilationCache.getCompilationTime(fileName)!=os.path.getmtime(fileName):
                     dirtyTargets.append(element)
-                    print("target {} is dirty because of compilation cache".format(element))
-                    print(foundTarget)
         #the we check if the output file(s) exists
         for element in buildTargets:
             foundTarget=self.findTarget(element)
@@ -586,9 +590,6 @@ class BuildDirectory:
                 for fileName in foundTarget["output"]:
                     if not os.path.isfile(fileName):
                         dirtyTargets.append(element)
-                        print("target {} is dirty because of output file not found".format(element))
-        print("dirty target: ")
-        print(dirtyTargets)
 
 
         dirtyTargetsVisited=[]
@@ -650,6 +651,7 @@ class BuildDirectory:
             #special case when we do piping
             if type(command[0])==tuple:
                 print(" ".join(command[0][1]))
+                print()
                 output=subprocess.PIPE
                 if len(command)>1 and command[1][0]=="file":
                     output=open(command[1][1],"a")
@@ -658,6 +660,7 @@ class BuildDirectory:
                     children.append( subprocess.Popen(command[0][1], stdout=subprocess.PIPE,stdin=children[-1].stdout))
             else:    
                 print(" ".join(command))
+                print()
                 children.append( subprocess.Popen(command, stdout=subprocess.PIPE))
         for child in children:
             streamdata = child.communicate()[0]
@@ -795,6 +798,60 @@ class BuildDirectory:
                 if next_state in path:
                     continue
                 fringe.append((next_state, path+[next_state]))
+
+    def strongly_connected_components(self,graph):
+        """
+        Tarjan's Algorithm (named for its discoverer, Robert Tarjan) is a graph theory algorithm
+        for finding the strongly connected components of a graph.
+        
+        Based on: http://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
+        """
+
+        index_counter = [0]
+        stack = []
+        lowlinks = {}
+        index = {}
+        result = []
+        
+        def strongconnect(node):
+            # set the depth index for this node to the smallest unused index
+            index[node] = index_counter[0]
+            lowlinks[node] = index_counter[0]
+            index_counter[0] += 1
+            stack.append(node)
+        
+            # Consider successors of `node`
+            try:
+                successors = graph[node]
+            except:
+                successors = []
+            for successor in successors:
+                if successor not in lowlinks:
+                    # Successor has not yet been visited; recurse on it
+                    strongconnect(successor)
+                    lowlinks[node] = min(lowlinks[node],lowlinks[successor])
+                elif successor in stack:
+                    # the successor is in the stack and hence in the current strongly connected component (SCC)
+                    lowlinks[node] = min(lowlinks[node],index[successor])
+            
+            # If `node` is a root node, pop the stack and generate an SCC
+            if lowlinks[node] == index[node]:
+                connected_component = []
+                
+                while True:
+                    successor = stack.pop()
+                    connected_component.append(successor)
+                    if successor == node: break
+                component = tuple(connected_component)
+                # storing the result
+                result.append(component)
+                return result
+        
+        for node in graph:
+            if node not in lowlinks:
+                strongconnect(node)
+        
+        return result
 
     def findCircular(self,items,current,start):
         subnodes=items[current]
