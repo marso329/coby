@@ -645,29 +645,36 @@ class BuildDirectory:
                     self.compilationCache.setCompilationTime(foundTarget["input"],tempCompilationTimes[foundTarget["input"]])
                 
     
-    def run_commands(self,commands):
-        children=[]
-        for command in commands:
-            #special case when we do piping
-            if type(command[0])==tuple:
-                print(" ".join(command[0][1]))
-                print()
-                output=subprocess.PIPE
-                if len(command)>1 and command[1][0]=="file":
-                    output=open(command[1][1],"a")
-                children.append( subprocess.Popen(command[0][1], stdout=output))
-                for element in command[1:]:
-                    children.append( subprocess.Popen(command[0][1], stdout=subprocess.PIPE,stdin=children[-1].stdout))
-            else:    
-                print(" ".join(command))
-                print()
-                children.append( subprocess.Popen(command, stdout=subprocess.PIPE))
-        for child in children:
-            streamdata = child.communicate()[0]
-            rc = child.returncode
-            if rc:
-                raise Exception("Command {} failed".format(command))
-   
+    def run_commands(self,commandsIn):
+        
+        threads=1
+        while commandsIn:
+            commands=[]
+            children=[]
+            for i in range(threads):
+                if len(commandsIn)>0:
+                    commands.append(commandsIn.pop())
+            for command in commands:
+                #special case when we do piping
+                if type(command[0])==tuple:
+                    print(" ".join(command[0][1]))
+                    print()
+                    output=subprocess.PIPE
+                    if len(command)>1 and command[1][0]=="file":
+                        output=open(command[1][1],"a")
+                    children.append( subprocess.Popen(command[0][1], stdout=output))
+                    for element in command[1:]:
+                        children.append( subprocess.Popen(command[0][1], stdout=subprocess.PIPE,stdin=children[-1].stdout))
+                else:    
+                    print(" ".join(command))
+                    print()
+                    children.append( subprocess.Popen(command, stdout=subprocess.PIPE))
+            for child in children:
+                streamdata = child.communicate()[0]
+                rc = child.returncode
+                if rc:
+                    raise Exception("Command {} failed".format(command))
+
     def buildCommands(self,buildOrder):
         #build order is already batched so it is a list of lists
         flatList = [item for sublist in buildOrder for item in sublist]
