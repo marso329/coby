@@ -4,6 +4,7 @@ import importlib.util
 import sys
 import subprocess
 from pathlib import Path
+import logging
 
 import coby 
 from coby import FileCompilationTimesCache
@@ -40,10 +41,23 @@ class Target:
         self.automatic=False
         self.imports=[]
         self.exports=[]
+        self.implements=[]
+        self.fileType=scanner.FileType.Undecided
         self.implementation=[]
     def __str__(self):
         returnString="("
         returnString+="rule: "+self.rule+", target: "+self.target+", deps: "+str(self.deps) +", input: "+self.input+", output: "+str(self.output)
+        if self.fileType==scanner.FileType.ModuleInterfacePartition:
+            returnString+=", fileType:ModuleInterfacePartition"
+        if self.fileType==scanner.FileType.PrimaryModuleInterface:
+            returnString+=", fileType:PrimaryModuleInterface"
+        if self.fileType==scanner.FileType.InternalModulePartition:
+            returnString+=", fileType:InternalModulePartition"
+        if self.fileType==scanner.FileType.Moduleimplementation:
+            returnString+=", fileType:Moduleimplementation"
+        if self.fileType==scanner.FileType.Undecided:
+            returnString+=", fileType:Undecided"
+        
         returnString+=")"
         return returnString
     def __getitem__(self, key):
@@ -336,9 +350,11 @@ class BuildDirectory:
         importExports=scanner.scan(fileToScan)
         target.imports=importExports["imports"]
         target.exports=importExports["exports"]
+        target.implements=importExports["implements"]
+        target.fileType=importExports["fileType"]
         if target.exports:
             if len(target.exports)!=1:
-                raise RuntimeError("target {} has more than one export , this is nor supported".format(target.target))
+                raise RuntimeError("target {} has more than one export , this is nor supported".format("target.target"))
             #if target.exports[0]!=target.rule:
             #    raise RuntimeError("target {} exports {} , these names must be the same".format(target.target,target.exports[0]))
     
@@ -367,6 +383,16 @@ class BuildDirectory:
                 target.deps.append(systemHeaderTarget)
                 continue
             target.deps.append(":".join(element))
+        #an internal module partition needs a dependency on the ModuleInterfacePartition
+        if target.fileType==scanner.FileType.InternalModulePartition:
+            assert(len(target.implements)>0)
+            implements=":".join(target.implements[0])
+            moduleInterfacePartitionTarget=self.findTarget(implements)
+            if moduleInterfacePartitionTarget==None:
+                logging.error("could not find ModuleInterfacePartition for InternalModulePartition {}".format(target.target))
+                sys.exit(1)
+            target.deps.append(moduleInterfacePartitionTarget.target)
+
             #needs to find target after all files have been parsed
             
             # dependencyTarget=self.findTargetFromExport(element)
