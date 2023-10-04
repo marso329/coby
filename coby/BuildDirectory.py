@@ -391,7 +391,10 @@ class BuildDirectory:
             if moduleInterfacePartitionTarget==None:
                 logging.error("could not find ModuleInterfacePartition for InternalModulePartition {}".format(target.target))
                 sys.exit(1)
-            target.deps.append(moduleInterfacePartitionTarget.target)
+            if moduleInterfacePartitionTarget==target:
+                logging.warning("InternalModulePartition {} without ModuleInterfacePartition".format(target.target))
+            else:
+                target.deps.append(moduleInterfacePartitionTarget.target)
 
             #needs to find target after all files have been parsed
             

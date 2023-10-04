@@ -2,7 +2,7 @@
 
 M=user_module(input=M.cppm,automatic=true)
 
-Impl=user_module_implementation(input=Impl.cpp)
+Impl=user_module_implementation(input=Impl.cpp,automatic=true,deps=[M])
 
 M:impl_part=user_module(input=impl_part.cpp,automatic=true)
 

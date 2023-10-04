@@ -1,17 +1,16 @@
 #creation = rule(input=inputfile,deps=[dependencies....])
 
-[string,iostream]=stdlib()
 
-main=binary(input=main.cxx,deps=[Test,iostream])
+main=binary(input=main.cxx,automatic=true)
 
 
-Test=user_module(input=Test.cxx,deps=[string])
+Test=user_module(input=Test.cxx,automatic=true)
 
 
 @DEFAULT_TARGET=main
 
-@SUBDIRS=[src,common,test]
 
 @IN_SOURCE_BUILD=false
+@ROOT=true
 
 @BUILD_DIRECTORY=./build
