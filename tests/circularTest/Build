@@ -1,0 +1,26 @@
+#creation = rule(input=inputfile,deps=[dependencies....])
+
+circularTest=binary(input=main.cxx,automatic=true,deps=[circularTest.circular:A_impl,circularTest.circular:B_impl])
+
+circularTest.circular:A=user_module_interface(input=circularTest_A.cppm,automatic=true)
+
+circularTest.circular:A_impl=user_module_implementation(input=circularTest_A.cpp,automatic=true)
+
+circularTest.circular:B_impl=user_module_implementation(input=circularTest_B.cpp,automatic=true)
+
+
+circularTest.circular:B=user_module_interface(input=circularTest_B.cppm,automatic=true)
+
+circularTest.circular:forward=user_module(input=circularTest_forward.cppm,automatic=true)
+
+circularTest.circular=user_module(input=circularTest_circular.cppm,automatic=true)
+
+
+@DEFAULT_TARGET=main
+
+
+@IN_SOURCE_BUILD=false
+
+@BUILD_DIRECTORY=./build
+
+@ROOT=true

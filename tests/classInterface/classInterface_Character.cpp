@@ -1,5 +1,5 @@
 // Character.cpp
-module Character;
+module classInterface.Character;
 import <string>;
 import <iostream>;
 

@@ -1,4 +1,4 @@
-import Character;
+import classInterface.Character;
 import <iostream>;
 int main() {
   Character type("test");

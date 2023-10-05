@@ -1,14 +1,10 @@
-#creation = rule(input=inputfile,deps=[dependencies....])
+simpleLibrary=binary(input=main.cxx,automatic=true)
 
 
-main=binary(input=main.cxx,automatic=true)
+simpleLibrary.Test=user_module(input=simpleLibrary_Test.cxxm,automatic=true)
 
 
-Test=user_module(input=Test.cxx,automatic=true)
-
-
-@DEFAULT_TARGET=main
-
+@DEFAULT_TARGET=simpleLibrary
 
 @IN_SOURCE_BUILD=false
 @ROOT=true

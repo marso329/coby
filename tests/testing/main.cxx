@@ -1,5 +1,5 @@
 
-import simpleLibrary.Test;
+import Test;
 #include <iostream>
 
 int main(int argc, char *argv[]){

@@ -1,4 +1,4 @@
-export module C;
+export module automaticDependency_C;
 
 import <string>;
 import <cassert>;

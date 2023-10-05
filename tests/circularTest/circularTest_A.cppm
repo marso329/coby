@@ -1,4 +1,4 @@
-export module circular:A;
+export module circularTest.circular:A;
 import :forward;
 
 export class A{

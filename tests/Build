@@ -1,1 +1,2 @@
-@SUBDIRS=[simpleLibrary]
+@SUBDIRS=[simpleLibrary,automaticDependency,classInterface,circularTest]
+@ROOT=true

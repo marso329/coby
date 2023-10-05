@@ -1,0 +1,16 @@
+#creation = rule(input=inputfile,deps=[dependencies....])
+
+
+main=binary(input=main.cxx,automatic=true)
+
+
+Test=user_module(input=Test.cxx,automatic=true)
+
+
+@DEFAULT_TARGET=main
+
+
+@IN_SOURCE_BUILD=false
+@ROOT=true
+
+@BUILD_DIRECTORY=./build

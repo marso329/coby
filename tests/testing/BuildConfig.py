@@ -35,29 +35,6 @@ def user_module(vars):
     vars["objectFile"]=objectFile
     return [command1,command2]
 
-def user_module_interface(vars):
-    command1=vars["CXX"]+vars["CXXFLAGS"]
-    for element in vars["deps"]:
-        command1.append("-fmodule-file={}/{}.pcm".format(element["output_dir"],element["target"]))
-    command1+=["--precompile","-xc++-module","-c",vars["input"]]
-    command1+=["-o","{}/{}.pcm".format(vars["output_dir"],vars["target"])]
-    vars["output"]="{}/{}.pcm".format(vars["output_dir"],vars["target"])
-    vars["BMI"]="{}={}/{}.pcm".format(vars["target"],vars["output_dir"],vars["target"])
-    
-    return [command1]
-
-def user_module_implementation(vars):
-    command1=vars["CXX"]+vars["CXXFLAGS"]
-    for element in vars["deps"]:
-        command1.append("-fmodule-file={}/{}.pcm".format(element["output_dir"],element["target"]))
-    command1+=["-c",vars["input"]]
-
-    objectFile="{}/{}.o".format(vars["output_dir"],vars["target"])
-    vars["output"]=objectFile
-    vars["objectFile"]=objectFile
-    command1+=["-o",objectFile]
-    return [command1]
-
 
 def binary(vars):
     command1=vars["CXX"]+vars["CXXFLAGS"]

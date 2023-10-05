@@ -1,0 +1,19 @@
+#creation = rule(input=inputfile,deps=[dependencies....])
+
+automaticDependency=binary(input=main.cxx,automatic=true)
+
+automaticDependency_A=user_module(input=automaticDependency_A.cppm,automatic=true)
+
+automaticDependency_B=user_module(input=automaticDependency_B.cppm,automatic=true)
+
+automaticDependency_C=user_module(input=automaticDependency_C.cppm,automatic=true)
+
+
+@DEFAULT_TARGET=automaticDependency
+
+
+@IN_SOURCE_BUILD=false
+
+@BUILD_DIRECTORY=./build
+
+@ROOT=false

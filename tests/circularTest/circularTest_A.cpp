@@ -1,5 +1,5 @@
-module circular:A; 
-import circular;
+module circularTest.circular:A; 
+import circularTest.circular;
 import <iostream>;
 A::A(){
     test=new B();

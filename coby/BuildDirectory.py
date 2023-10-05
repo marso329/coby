@@ -10,6 +10,7 @@ import coby
 from coby import FileCompilationTimesCache
 from coby import TargetFile
 from coby import scanner
+logger = logging.getLogger("coby")
 
 class TargetNotFound(Exception):
     """Exception raised for errors in the input salary.
@@ -107,6 +108,7 @@ class Target:
             self.output_dir=value
         elif key=="BMI":
             if self.BMI:
+                print(self)
                 raise RuntimeError("BMI is only allowed to be set once")
             self.BMI=value
         elif key=="objectFile":
@@ -149,6 +151,7 @@ class BuildDirectory:
         self.kids=[]
         self.in_source_build=None
         self.firstDir=firstDir
+        self.threads=8
 
         if kid and parent:
             raise RuntimeError("a buildDirectory can't be created with a kid and a parent")
@@ -201,7 +204,9 @@ class BuildDirectory:
         returnString+="parent: "+str(self.parent)+"\n"
         returnString+="cachedir: "+self.getCacheDir()+"\n"
         return returnString
-    
+    def setThreads(self,threads):
+        assert(type(threads)==int)
+        self.threads=threads
     def createFileCache(self):
         self.compilationCache=FileCompilationTimesCache.FileCompilationTimesCache(self.path)
         self.setFileCache(self.compilationCache)
@@ -225,7 +230,8 @@ class BuildDirectory:
         #node is now the highest directory
         node.decideBuildDirectory()
 
-    def generateDot(self,outputFile):
+    def generateDot(self,outputFile,target):
+        #TODO support target
         buildOrder=self.build(returnRequiredTargets=True)
         tempString=""
         tempString+= "digraph graphname { \n"
@@ -291,6 +297,9 @@ class BuildDirectory:
                 if kid.path==newPath:
                     safe=False
             if safe:
+                if not os.path.exists(newPath) or not os.path.isdir(newPath):
+                    logger.error("path {} which is included in {} does not exist".format(newPath,self.path))
+                    sys.exit(1)
                 newKid=BuildDirectory("","",None,self,newPath,firstDir=False)
                 if newKid.valid():
                     self.kids.append(newKid)
@@ -529,8 +538,61 @@ class BuildDirectory:
             return True     
         return False
 
+    def buildAll(self):
+        print("building all")
+        requiredTargets=self.getRequiredTargets()
+        if not requiredTargets:
+            print("No targets to build in {}".format(self.path))
+            return
+        buildOrder=self.decideBuildOrder(requiredTargets)
+        if len(buildOrder)==0:
+            raise RuntimeError("no build order could be decided")
+        targetsToBuild=buildOrder[0]
+
+        allRequiredTargets={}
+        for element in targetsToBuild:
+            #step two, find all the targets required to build the main target
+            requiredTargets=self.getRequiredTargets(element)
+            allRequiredTargets.update(requiredTargets)
+
+        #step three, find the order in which to build it
+        buildOrder=self.decideBuildOrder(allRequiredTargets)
+
+
+
+        #we need to build the commands in the reverse order
+        buildOrder.reverse()
+
+        #step four, build the commands for the targets
+        try:
+            self.buildCommands(buildOrder)
+        except TargetNotFound as e:
+            targetsDependsOnThis=[]
+            for element in allRequiredTargets:
+                if e.target in allRequiredTargets[element]:
+                    targetsDependsOnThis.append(element)
+            print("target {} was not found which is required by {}".format(e.target,targetsDependsOnThis))
+            sys.exit(1)
+
+        #revert the reverse
+        buildOrder.reverse()
+
+        #step five, check for dirty targets
+        self.checkForDirtyFiles(allRequiredTargets)
+
+        #step six remove clean targets
+        buildOrder=self.removeCleanTargets(buildOrder)
+
+        if not buildOrder:
+            print("nothing to do")
+
+        print("using {} threads".format(self.threads))  
+        #step seven, run the commands
+        self.runCommands(buildOrder)
+        self.saveCache()
+
+
     def build(self,returnRequiredTargets=False):
-        
         #step one, decide the main target
         decidedTarget=""
         if not self.default_target:
@@ -587,6 +649,8 @@ class BuildDirectory:
 
         if not buildOrder:
             print("nothing to do")
+
+        print("using {} threads".format(self.threads))
 
         #step seven, run the commands
         self.runCommands(buildOrder)
@@ -676,11 +740,10 @@ class BuildDirectory:
     
     def run_commands(self,commandsIn):
         
-        threads=1
         while commandsIn:
             commands=[]
             children=[]
-            for i in range(threads):
+            for i in range(self.threads):
                 if len(commandsIn)>0:
                     commands.append(commandsIn.pop())
             for command in commands:

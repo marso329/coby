@@ -1,6 +1,9 @@
 import re
 import coby
 from coby import BuildDirectory
+import logging
+import sys
+logger = logging.getLogger("coby")
 
 class TargetFile:
     def __init__(self,buildDir,fileName):
@@ -185,7 +188,11 @@ class TargetFile:
             raise RuntimeError("undefined type")
         for element in targets:
             if buildDir.findTarget(element):
-                raise RuntimeError("duplicate target name {}".format(element))
+                logger.error("duplicate target name {}".format(element))
+                sys.exit(1)
+            if element.lower()=="all":
+                logger.error("target name all is not allowed, used in {}".format(buildDir.path))
+                sys.exit(1)
             target=BuildDirectory.Target(buildDir)
             target.rule=valName
             target.target=element

@@ -1,7 +1,7 @@
 
-import A;
-import B;
-import C;
+import automaticDependency_A;
+import automaticDependency_B;
+import automaticDependency_C;
 
 import <iostream>;
 

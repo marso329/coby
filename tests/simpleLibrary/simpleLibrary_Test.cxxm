@@ -1,0 +1,5 @@
+export module simpleLibrary.Test;
+
+import <string>;
+
+export std::string test() { return "hello world"; }

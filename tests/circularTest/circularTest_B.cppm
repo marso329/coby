@@ -1,4 +1,4 @@
-export module circular:B;
+export module circularTest.circular:B;
 import :forward;
 import <iostream>;
 

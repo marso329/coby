@@ -1,5 +1,5 @@
 // Character.cppm
-export module Character;
+export module classInterface.Character;
 import <string>;
 import <iostream>;
 
