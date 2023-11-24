@@ -736,6 +736,7 @@ class BuildDirectory:
                 foundTarget=self.findTarget(element)
                 if foundTarget["input"]:
                     self.compilationCache.setCompilationTime(foundTarget["input"],tempCompilationTimes[foundTarget["input"]])
+            self.saveCache()
                 
     
     def run_commands(self,commandsIn):
